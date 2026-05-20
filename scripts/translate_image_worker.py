@@ -52,7 +52,7 @@ MANGA_TRANSLATOR_LANG_CODES = {
     "ru": "RUS",
 }
 VISION_LANG_CODES = {
-    "auto": [],
+    "auto": ["zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR"],
     "zh": ["zh-Hans", "zh-Hant"],
     "zh-cn": ["zh-Hans"],
     "zh-hans": ["zh-Hans"],
