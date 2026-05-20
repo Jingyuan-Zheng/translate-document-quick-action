@@ -18,6 +18,16 @@ WORKER_SCRIPT = os.environ.get("TRANSLATE_DOCUMENT_WORKER_SCRIPT", os.path.join(
 SUPPORTED_EXTENSIONS = (".txt", ".md", ".markdown", ".docx")
 
 
+def bring_window_to_front(root):
+    root.lift()
+    root.focus_force()
+    try:
+        root.attributes("-topmost", True)
+        root.after(1500, lambda: root.attributes("-topmost", False))
+    except tk.TclError:
+        pass
+
+
 class DocumentTranslateGUI:
     def __init__(self, root):
         self.root = root
@@ -34,6 +44,7 @@ class DocumentTranslateGUI:
         x = (screen_width - window_width) // 2
         y = (screen_height - window_height) // 2
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        bring_window_to_front(self.root)
 
         main_frame = tk.Frame(root)
         main_frame.pack(padx=10, pady=10, fill="both", expand=True)

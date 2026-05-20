@@ -21,6 +21,17 @@ else:
 
 PDF2ZH_BIN = os.environ.get("PDF2ZH_NEXT_BIN") or shutil.which("pdf2zh_next")
 
+
+def bring_window_to_front(root):
+    root.lift()
+    root.focus_force()
+    try:
+        root.attributes("-topmost", True)
+        root.after(1500, lambda: root.attributes("-topmost", False))
+    except tk.TclError:
+        pass
+
+
 LANGUAGE_OUTPUT_CODES = {
     "auto": "AUTO",
     "zh": "CN",
@@ -141,6 +152,7 @@ class PDFTranslateGUI:
         x = (screen_width - window_width) // 2
         y = (screen_height - window_height) // 2
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        bring_window_to_front(self.root)
 
         # Main frame with padding
         main_frame = tk.Frame(root)
