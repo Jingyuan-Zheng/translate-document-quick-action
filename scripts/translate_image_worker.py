@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import os
 import shutil
@@ -6,9 +8,6 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Iterable, List
-
-from PIL import Image
-
 
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 LANGUAGE_OUTPUT_CODES = {
@@ -144,6 +143,11 @@ def run_manga_translator(
 
 
 def make_side_by_side(original_path: str, translated_path: str, output_path_value: str) -> None:
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise RuntimeError("Pillow is required for image bilingual side-by-side output. Install requirements.txt.") from exc
+
     with Image.open(original_path) as original_image, Image.open(translated_path) as translated_image:
         original = original_image.convert("RGB")
         translated = translated_image.convert("RGB")
