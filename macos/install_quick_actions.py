@@ -19,6 +19,8 @@ def copy_scripts() -> None:
         "translate_document_worker.py",
         "translate_document_gui.py",
         "translate_pdf_gui.py",
+        "translate_image_worker.py",
+        "translate_image_gui.py",
     ]:
         shutil.copy2(SCRIPT_SOURCE_DIR / script_name, APP_DIR / script_name)
 
@@ -126,6 +128,11 @@ def main() -> int:
         f'PYTHON_BIN="${{TRANSLATE_DOCUMENT_GUI_PYTHON:-{gui_python}}}"\n'
         '"$PYTHON_BIN" "$APP_DIR/translate_pdf_gui.py" "$@"'
     )
+    image_command = (
+        f'APP_DIR="{app_dir}"\n'
+        f'PYTHON_BIN="${{TRANSLATE_DOCUMENT_GUI_PYTHON:-{gui_python}}}"\n'
+        '"$PYTHON_BIN" "$APP_DIR/translate_image_gui.py" "$@"'
+    )
 
     write_workflow(
         "Translate Document...",
@@ -140,6 +147,13 @@ def main() -> int:
         "com.adobe.pdf",
         "com.apple.Automator.fileSystemObject.PDF",
         pdf_command,
+    )
+    write_workflow(
+        "Translate Image...",
+        "Translate Image...",
+        "public.image",
+        "public.image",
+        image_command,
     )
 
     print(f"Installed scripts to: {APP_DIR}")
