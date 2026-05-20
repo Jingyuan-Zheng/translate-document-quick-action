@@ -52,7 +52,7 @@ MANGA_TRANSLATOR_LANG_CODES = {
     "ru": "RUS",
 }
 VISION_LANG_CODES = {
-    "auto": ["zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR"],
+    "auto": [],
     "zh": ["zh-Hans", "zh-Hant"],
     "zh-cn": ["zh-Hans"],
     "zh-hans": ["zh-Hans"],
@@ -241,7 +241,9 @@ def recognize_text_macos_vision(input_path: str, source_lang: str) -> List[dict]
     request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
     request.setUsesLanguageCorrection_(True)
     languages = vision_lang_codes(source_lang)
-    if languages:
+    if not languages and hasattr(request, "setAutomaticallyDetectsLanguage_"):
+        request.setAutomaticallyDetectsLanguage_(True)
+    elif languages:
         request.setRecognitionLanguages_(languages)
 
     url = NSURL.fileURLWithPath_(os.path.abspath(input_path))
