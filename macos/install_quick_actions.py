@@ -83,7 +83,13 @@ def workflow_document(command: str, input_type: str) -> dict:
     }
 
 
-def info_plist(menu_name: str, send_file_type: str) -> dict:
+def normalize_send_file_types(send_file_types: str | list[str]) -> list[str]:
+    if isinstance(send_file_types, str):
+        return [send_file_types]
+    return send_file_types
+
+
+def info_plist(menu_name: str, send_file_types: str | list[str]) -> dict:
     return {
         "NSServices": [
             {
@@ -92,17 +98,17 @@ def info_plist(menu_name: str, send_file_type: str) -> dict:
                 "NSMenuItem": {"default": menu_name},
                 "NSMessage": "runWorkflowAsService",
                 "NSRequiredContext": {"NSApplicationIdentifier": "com.apple.finder"},
-                "NSSendFileTypes": [send_file_type],
+                "NSSendFileTypes": normalize_send_file_types(send_file_types),
             }
         ]
     }
 
 
-def write_workflow(name: str, menu_name: str, send_file_type: str, input_type: str, command: str) -> None:
+def write_workflow(name: str, menu_name: str, send_file_types: str | list[str], input_type: str, command: str) -> None:
     contents_dir = SERVICES_DIR / f"{name}.workflow" / "Contents"
     contents_dir.mkdir(parents=True, exist_ok=True)
     with (contents_dir / "Info.plist").open("wb") as handle:
-        plistlib.dump(info_plist(menu_name, send_file_type), handle)
+        plistlib.dump(info_plist(menu_name, send_file_types), handle)
     with (contents_dir / "document.wflow").open("wb") as handle:
         plistlib.dump(workflow_document(command, input_type), handle)
 
@@ -137,7 +143,7 @@ def main() -> int:
     write_workflow(
         "Translate Document...",
         "Translate Document...",
-        "public.item",
+        ["txt", "md", "markdown", "docx"],
         "com.apple.Automator.fileSystemObject",
         document_command,
     )
