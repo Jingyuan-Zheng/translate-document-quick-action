@@ -9,6 +9,7 @@ Supported formats:
 - Markdown with common Markdown structure protection
 - TXT with line-preserving translation
 - Images through a lightweight macOS Vision OCR engine or an optional `manga-image-translator` adapter
+- Audio and video transcripts through the MacWhisper `mw` CLI, with optional transcript translation
 
 Outputs are written next to the input file and never overwrite existing files. Monolingual files use the target language suffix, for example `_CN.docx`; bilingual files use source and target codes, for example `_EN_CN.docx`.
 
@@ -77,6 +78,13 @@ For lightweight macOS image OCR, install PyObjC Vision bindings in the Python en
 pip install pyobjc-framework-Vision pyobjc-framework-Quartz pyobjc-framework-AppKit
 ```
 
+For audio transcription, install MacWhisper 13.20 or later and enable its command-line tool from `MacWhisper > Settings > Advanced > Command-Line Tool`. Verify it with:
+
+```bash
+/usr/local/bin/mw version
+/usr/local/bin/mw models list
+```
+
 If you want to use the macOS Finder Quick Actions:
 
 ```bash
@@ -126,6 +134,14 @@ python3 scripts/translate_image_worker.py --image-engine manga --lang-in auto --
 
 Image monolingual output is the translated image, for example `_CN.png`. Image bilingual output is a side-by-side image with the original on the left and translated result on the right, for example `_AUTO_CN.png` or `_EN_CN.png` if `--lang-in en` is provided.
 
+Transcribe audio or video and translate the transcript:
+
+```bash
+python3 scripts/translate_audio_worker.py --operation both --engine google --lang-out zh --mode dual interview.m4a
+```
+
+Audio transcript-only output uses `_TRANSCRIPT.txt`. Translated transcript output follows the same suffix rules as document translation, for example `_CN.txt` or `_EN_CN.txt`.
+
 ## Output Style
 
 TXT and Markdown bilingual output is interleaved:
@@ -141,6 +157,8 @@ PDF bilingual output uses `pdf2zh-next`'s alternating-page dual PDF mode.
 
 Image bilingual output uses side-by-side composition. With `--image-engine simple-macos`, OCR uses Apple's Vision framework and translated text is rendered back with Pillow. With `--image-engine manga`, OCR, inpainting, rendering, and translated-text placement are delegated to `manga-image-translator`.
 
+Audio transcription uses MacWhisper's `mw` CLI. Translation is applied to the transcript text after transcription, using the same Google, Bing, or Ollama text adapters as document translation.
+
 ## Notes
 
 Google and Bing engines in this project use web endpoints, not official paid APIs. They may be rate limited or change upstream behavior. For sensitive documents, use a local backend such as Ollama or replace the translator adapter with an official API.
@@ -150,6 +168,8 @@ DOCX translation preserves media references by modifying Word XML in place. It c
 `simple-macos` is designed for screenshots, slides, diagrams, and other relatively clean images. It covers source text with a sampled background color and writes translated text into the detected boxes; it is not AI inpainting. For manga, complex backgrounds, or high-quality text removal, use the `manga` engine.
 
 `manga-image-translator` currently disables its Google translator in the public registry, so image translation through the `manga` engine should use one of its supported translators such as `offline`, `custom_openai`, `chatgpt`, `deepl`, or another backend you configure in that project. This repository only wraps its CLI and normalizes output naming.
+
+MacWhisper `mw` talks to the running MacWhisper app over a local socket. If Finder or a sandboxed shell cannot connect to MacWhisper, open MacWhisper once and verify `/usr/local/bin/mw models list` works in Terminal.
 
 ## License
 

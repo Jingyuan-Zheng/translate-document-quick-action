@@ -5,6 +5,7 @@ import shutil
 import sys
 import uuid
 from pathlib import Path
+from typing import List, Union
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +22,8 @@ def copy_scripts() -> None:
         "translate_pdf_gui.py",
         "translate_image_worker.py",
         "translate_image_gui.py",
+        "translate_audio_worker.py",
+        "translate_audio_gui.py",
     ]:
         shutil.copy2(SCRIPT_SOURCE_DIR / script_name, APP_DIR / script_name)
 
@@ -83,13 +86,13 @@ def workflow_document(command: str, input_type: str) -> dict:
     }
 
 
-def normalize_send_file_types(send_file_types: str | list[str]) -> list[str]:
+def normalize_send_file_types(send_file_types: Union[str, List[str]]) -> List[str]:
     if isinstance(send_file_types, str):
         return [send_file_types]
     return send_file_types
 
 
-def info_plist(menu_name: str, send_file_types: str | list[str]) -> dict:
+def info_plist(menu_name: str, send_file_types: Union[str, List[str]]) -> dict:
     return {
         "NSServices": [
             {
@@ -104,7 +107,7 @@ def info_plist(menu_name: str, send_file_types: str | list[str]) -> dict:
     }
 
 
-def write_workflow(name: str, menu_name: str, send_file_types: str | list[str], input_type: str, command: str) -> None:
+def write_workflow(name: str, menu_name: str, send_file_types: Union[str, List[str]], input_type: str, command: str) -> None:
     contents_dir = SERVICES_DIR / f"{name}.workflow" / "Contents"
     contents_dir.mkdir(parents=True, exist_ok=True)
     with (contents_dir / "Info.plist").open("wb") as handle:
@@ -139,6 +142,11 @@ def main() -> int:
         f'PYTHON_BIN="${{TRANSLATE_DOCUMENT_GUI_PYTHON:-{gui_python}}}"\n'
         '"$PYTHON_BIN" "$APP_DIR/translate_image_gui.py" "$@"'
     )
+    audio_command = (
+        f'APP_DIR="{app_dir}"\n'
+        f'PYTHON_BIN="${{TRANSLATE_DOCUMENT_GUI_PYTHON:-{gui_python}}}"\n'
+        '"$PYTHON_BIN" "$APP_DIR/translate_audio_gui.py" "$@"'
+    )
 
     write_workflow(
         "Translate Document...",
@@ -160,6 +168,13 @@ def main() -> int:
         "public.image",
         "public.image",
         image_command,
+    )
+    write_workflow(
+        "Transcribe Audio...",
+        "Transcribe Audio...",
+        ["public.audio", "public.movie"],
+        "public.audio",
+        audio_command,
     )
 
     print(f"Installed scripts to: {APP_DIR}")
