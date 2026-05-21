@@ -19,7 +19,24 @@ else:
     NSApp = None
     NSApplicationActivationPolicyAccessory = None
 
-PDF2ZH_BIN = os.environ.get("PDF2ZH_NEXT_BIN") or shutil.which("pdf2zh_next")
+def resolve_pdf2zh_bin():
+    configured = os.environ.get("PDF2ZH_NEXT_BIN")
+    candidates = [
+        configured,
+        shutil.which("pdf2zh_next"),
+        shutil.which("pdf2zh"),
+        os.path.expanduser("~/.local/bin/pdf2zh_next"),
+        os.path.expanduser("~/.local/bin/pdf2zh"),
+        os.path.expanduser("~/.local/share/uv/tools/pdf2zh-next/bin/pdf2zh_next"),
+        os.path.expanduser("~/.local/share/uv/tools/pdf2zh-next/bin/pdf2zh"),
+    ]
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+PDF2ZH_BIN = resolve_pdf2zh_bin()
 
 
 def bring_window_to_front(root):
