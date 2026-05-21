@@ -632,6 +632,69 @@ def translate_protected_line(
     return "".join(translated_parts)
 
 
+def is_markdown_table_row(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2
+
+
+def is_markdown_table_separator_cell(cell: str) -> bool:
+    return bool(re.match(r"^:?-{3,}:?$", cell.strip()))
+
+
+def is_markdown_table_separator_row(line: str) -> bool:
+    if not is_markdown_table_row(line):
+        return False
+    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    return bool(cells) and all(is_markdown_table_separator_cell(cell) for cell in cells)
+
+
+def split_markdown_table_row(line: str) -> List[str]:
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def render_markdown_table_row(cells: List[str]) -> str:
+    return "| " + " | ".join(cells) + " |"
+
+
+def translate_markdown_table_cell(
+    translator: BaseTranslator,
+    cell: str,
+    target_lang: str,
+    cache: Dict[str, str],
+) -> str:
+    if not cell.strip() or is_markdown_table_separator_cell(cell):
+        return cell
+    return translate_protected_line(translator, cell, target_lang, cache)
+
+
+def translate_markdown_table_row(
+    translator: BaseTranslator,
+    line: str,
+    target_lang: str,
+    cache: Dict[str, str],
+) -> str:
+    if is_markdown_table_separator_row(line):
+        return line
+    return render_markdown_table_row(
+        [translate_markdown_table_cell(translator, cell, target_lang, cache) for cell in split_markdown_table_row(line)]
+    )
+
+
+def translate_markdown_table_row_bilingual(
+    translator: BaseTranslator,
+    line: str,
+    target_lang: str,
+    cache: Dict[str, str],
+) -> str:
+    if is_markdown_table_separator_row(line):
+        return line
+    bilingual_cells = []
+    for cell in split_markdown_table_row(line):
+        translated = translate_markdown_table_cell(translator, cell, target_lang, cache)
+        bilingual_cells.append(cell if translated == cell else f"{cell}<br>{translated}")
+    return render_markdown_table_row(bilingual_cells)
+
+
 def restore_placeholders(text: str, placeholders: Dict[str, str]) -> str:
     for placeholder, value in sorted(placeholders.items(), key=lambda item: len(item[0]), reverse=True):
         text = text.replace(placeholder, value)
@@ -644,7 +707,12 @@ def translate_markdown_content(translator: BaseTranslator, content: str, target_
     protected = protect_markdown_blocks(content, placeholders, counters)
     protected_lines = [protect_markdown_line(line, placeholders, counters) for line in protected.split("\n")]
     cache: Dict[str, str] = {}
-    translated_lines = [translate_protected_line(translator, line, target_lang, cache) for line in protected_lines]
+    translated_lines = [
+        translate_markdown_table_row(translator, line, target_lang, cache)
+        if is_markdown_table_row(line)
+        else translate_protected_line(translator, line, target_lang, cache)
+        for line in protected_lines
+    ]
     translated = restore_placeholders("\n".join(translated_lines), placeholders)
     if content.endswith("\n") and not translated.endswith("\n"):
         translated += "\n"
@@ -661,6 +729,9 @@ def translate_markdown_bilingual_interleaved(translator: BaseTranslator, content
     for line in protected_lines:
         if not line.strip() or PLACEHOLDER_TEST_REGEX.match(line.strip()):
             bilingual_lines.append(line)
+            continue
+        if is_markdown_table_row(line):
+            bilingual_lines.append(translate_markdown_table_row_bilingual(translator, line, target_lang, cache))
             continue
         translated = translate_protected_line(translator, line, target_lang, cache)
         bilingual_lines.append(line)
