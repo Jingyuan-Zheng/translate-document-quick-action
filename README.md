@@ -12,6 +12,30 @@ Supported formats:
 
 Outputs are written next to the input file and never overwrite existing files. Monolingual files use the target language suffix, for example `_CN.docx`; bilingual files use source and target codes, for example `_EN_CN.docx`.
 
+## Preview
+
+TXT, Markdown, DOCX, PDF, and image translation outputs:
+
+**TXT output**
+
+![TXT translation output](docs/images/txt-output.png)
+
+**Markdown bilingual output**
+
+![Markdown bilingual output](docs/images/markdown-bilingual.png)
+
+**DOCX bilingual output**
+
+![DOCX bilingual output](docs/images/docx-bilingual.png)
+
+**PDF bilingual output**
+
+![PDF bilingual output](docs/images/pdf-bilingual.png)
+
+**Image bilingual output**
+
+![Image bilingual output](docs/images/image-bilingual.png)
+
 ## Status
 
 This project started as a macOS Finder Quick Action, but the core scripts are plain Python.
