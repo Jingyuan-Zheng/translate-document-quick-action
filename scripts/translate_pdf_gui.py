@@ -23,17 +23,49 @@ def resolve_pdf2zh_bin():
     configured = os.environ.get("PDF2ZH_NEXT_BIN")
     candidates = [
         configured,
-        shutil.which("pdf2zh_next"),
-        shutil.which("pdf2zh"),
         os.path.expanduser("~/.local/bin/pdf2zh_next"),
-        os.path.expanduser("~/.local/bin/pdf2zh"),
         os.path.expanduser("~/.local/share/uv/tools/pdf2zh-next/bin/pdf2zh_next"),
+        shutil.which("pdf2zh_next"),
         os.path.expanduser("~/.local/share/uv/tools/pdf2zh-next/bin/pdf2zh"),
+        os.path.expanduser("~/.local/bin/pdf2zh"),
+        shutil.which("pdf2zh"),
     ]
+    seen = set()
     for candidate in candidates:
-        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        if is_pdf2zh_next_compatible(candidate):
             return candidate
     return None
+
+
+def is_pdf2zh_next_compatible(candidate):
+    if not os.path.isfile(candidate) or not os.access(candidate, os.X_OK):
+        return False
+    if os.path.basename(candidate) == "pdf2zh_next":
+        return True
+    try:
+        process = subprocess.run(
+            [candidate, "--help"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+    except Exception:
+        return False
+    output = process.stdout
+    return all(
+        option in output
+        for option in [
+            "--translate-table-text",
+            "--skip-scanned-detection",
+            "--enhance-compatibility",
+        ]
+    )
 
 
 PDF2ZH_BIN = resolve_pdf2zh_bin()
