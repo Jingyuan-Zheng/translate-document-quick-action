@@ -173,7 +173,7 @@ def main() -> int:
         "Transcribe Audio...",
         "Transcribe Audio...",
         ["public.audio", "public.movie"],
-        "public.audio",
+        "com.apple.Automator.fileSystemObject",
         audio_command,
     )
 
