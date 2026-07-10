@@ -1,8 +1,20 @@
 # Translate Document Quick Action
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Translate documents, PDFs, and images directly from Finder on macOS. The project also includes audio/video transcription, image resizing and conversion, and searchable-PDF OCR in the same native utility app.
 
 Select one or more files in Finder, open **Quick Actions**, choose a tool, review the options, and save the results beside the originals. Existing files are never overwritten.
+
+![Finder Quick Actions menu](docs/images/finder-quick-actions.png)
+
+## Native Interface
+
+The shared Service Tools app presents only the options relevant to the selected action.
+
+| Translate Document | Resize Image |
+| --- | --- |
+| ![Translate Document native interface](docs/images/translate-document-ui.png) | ![Resize Image native interface](docs/images/resize-image-ui.png) |
 
 ## What It Includes
 
@@ -18,16 +30,35 @@ Select one or more files in Finder, open **Quick Actions**, choose a tool, revie
 
 The current version uses a shared native Swift/AppKit application instead of opening a separate Tk window for every action. On macOS 26 it adopts system glass controls; older supported macOS versions use native AppKit fallbacks.
 
-## Quick Start
+## Install
 
-### 1. Clone the repository
+### Download the v2.0.0 release
+
+Download `Translate-Document-Quick-Action-v2.0.0.zip` and `SHA256SUMS.txt` from the [latest GitHub Release](https://github.com/Jingyuan-Zheng/translate-document-quick-action/releases/latest), verify the checksum if desired, extract the archive, and run:
+
+```bash
+python3 install.py
+```
+
+The release archive contains the native App, current Python workers, all seven Finder workflow bundles, and a standalone installer. External translation, OCR, transcription, and image-processing dependencies are not bundled.
+
+The downloadable App is ad-hoc signed but not Apple-notarized. If macOS blocks it after download, review the source and build locally, or remove quarantine from the installed App:
+
+```bash
+xattr -dr com.apple.quarantine \
+  "$HOME/Library/Services/Service Tools/Service Tools.app"
+```
+
+### Build from source
+
+#### 1. Clone the repository
 
 ```bash
 git clone https://github.com/Jingyuan-Zheng/translate-document-quick-action.git
 cd translate-document-quick-action
 ```
 
-### 2. Install the shared Python packages
+#### 2. Install the shared Python packages
 
 The Finder app automatically checks common Homebrew and system Python locations. Install the packages into the Python interpreter that will run the workers:
 
@@ -35,7 +66,7 @@ The Finder app automatically checks common Homebrew and system Python locations.
 python3 -m pip install -r requirements.txt
 ```
 
-### 3. Build and install
+#### 3. Build and install
 
 ```bash
 python3 build_service_tools.py --install
@@ -53,7 +84,7 @@ The shared app and workers are installed under:
 ~/Library/Services/Service Tools/
 ```
 
-### 4. Run a Quick Action
+#### 4. Run a Quick Action
 
 In Finder, select one or more supported files, right-click, and choose the required item under **Quick Actions**. If a newly installed action is not visible immediately, relaunch Finder or enable it in **System Settings → General → Login Items & Extensions → Finder**.
 
@@ -326,6 +357,7 @@ Before publishing a change:
 python3 -m compileall -q build_service_tools.py scripts legacy/tk
 python3 -m unittest discover -s tests
 python3 build_service_tools.py --export-workflows
+python3 build_service_tools.py --package-release
 git diff --check
 ```
 

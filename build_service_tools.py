@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import plistlib
 import shutil
 import subprocess
@@ -18,6 +19,9 @@ WORKFLOW_SOURCES = ROOT / "workflows"
 APP_BUNDLE = OUTPUTS / "Service Tools.app"
 WORKERS_OUTPUT = OUTPUTS / "Service Tools" / "Workers"
 EXECUTABLE_NAME = "TranslationTools"
+VERSION = "2.0.0"
+BUILD_NUMBER = "2"
+RELEASE_INSTALLER = ROOT / "install_release.py"
 
 SERVICES_DIR = Path.home() / "Library" / "Services"
 SERVICE_TOOLS_DIR = SERVICES_DIR / "Service Tools"
@@ -211,8 +215,8 @@ def build_app() -> None:
         "CFBundleName": "Service Tools",
         "CFBundleDisplayName": "Service Tools",
         "CFBundlePackageType": "APPL",
-        "CFBundleShortVersionString": "1.0",
-        "CFBundleVersion": "1",
+        "CFBundleShortVersionString": VERSION,
+        "CFBundleVersion": BUILD_NUMBER,
         "LSMinimumSystemVersion": "13.0",
         "LSUIElement": True,
         "NSHighResolutionCapable": True,
@@ -285,6 +289,57 @@ def export_workflows() -> None:
                 plistlib.dump(value, file, fmt=plistlib.FMT_XML, sort_keys=False)
 
 
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def package_release() -> tuple[Path, Path]:
+    release_root = OUTPUTS / "releases"
+    package_name = f"Translate-Document-Quick-Action-v{VERSION}"
+    package_dir = release_root / package_name
+    if package_dir.exists():
+        shutil.rmtree(package_dir)
+    package_dir.mkdir(parents=True)
+
+    support_dir = package_dir / "Service Tools"
+    support_dir.mkdir()
+    shutil.copytree(APP_BUNDLE, support_dir / APP_BUNDLE.name)
+    shutil.copytree(WORKERS_OUTPUT, support_dir / "Workers")
+
+    workflow_dir = package_dir / "Workflows"
+    workflow_dir.mkdir()
+    for workflow in WORKFLOWS:
+        name = f"{workflow['bundle']}.workflow"
+        shutil.copytree(OUTPUTS / name, workflow_dir / name)
+
+    shutil.copy2(RELEASE_INSTALLER, package_dir / "install.py")
+    (package_dir / "README.txt").write_text(
+        f"Translate Document Quick Action v{VERSION}\n\n"
+        "Run `python3 install.py` from this folder to install Service Tools and all Finder Quick Actions.\n\n"
+        "This binary release is ad-hoc signed, not Apple-notarized. If macOS blocks the app after download, "
+        "review the source and build locally, or remove quarantine from the installed Service Tools.app.\n"
+        "External dependencies are not bundled. See the project README for requirements.\n",
+        encoding="utf-8",
+    )
+
+    packaged_app = support_dir / APP_BUNDLE.name
+    if shutil.which("codesign"):
+        subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(packaged_app)], check=True)
+        subprocess.run(["codesign", "--verify", "--deep", "--strict", str(packaged_app)], check=True)
+
+    archive_base = release_root / package_name
+    archive_path = Path(
+        shutil.make_archive(str(archive_base), "zip", root_dir=release_root, base_dir=package_name)
+    )
+    checksum_path = release_root / "SHA256SUMS.txt"
+    checksum_path.write_text(f"{sha256(archive_path)}  {archive_path.name}\n", encoding="utf-8")
+    return archive_path, checksum_path
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the Service Tools app and Finder Quick Actions.")
     parser.add_argument(
@@ -297,6 +352,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="refresh the reviewable XML workflow bundles stored under workflows/",
     )
+    parser.add_argument(
+        "--package-release",
+        action="store_true",
+        help="create a versioned, ad-hoc-signed release archive and SHA-256 checksum",
+    )
     return parser.parse_args()
 
 
@@ -307,6 +367,10 @@ def main() -> None:
     if args.export_workflows:
         export_workflows()
         print(f"Exported reviewable workflows to {WORKFLOW_SOURCES}")
+    if args.package_release:
+        archive, checksum = package_release()
+        print(f"Packaged release archive: {archive}")
+        print(f"Wrote release checksum: {checksum}")
     if args.install:
         install()
         print(f"Installed Service Tools in {SERVICES_DIR}")
