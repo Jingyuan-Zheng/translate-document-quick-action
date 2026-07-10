@@ -42,6 +42,11 @@ class RepositoryHygieneTests(unittest.TestCase):
         self.assertIn("Bundle.main.bundleURL.deletingLastPathComponent()", source)
         self.assertNotIn("/" + "Users/", source)
 
+    def test_target_language_group_is_centered_in_form_column(self) -> None:
+        source = (ROOT / "app" / "Sources" / "TranslationTools.swift").read_text(encoding="utf-8")
+        self.assertIn("private func targetLanguageControl() -> NSView", source)
+        self.assertIn("stack.centerXAnchor.constraint(equalTo: container.centerXAnchor)", source)
+
     def test_workflows_use_portable_home_directory(self) -> None:
         workflow_files = sorted((ROOT / "workflows").glob("*.workflow/Contents/document.wflow"))
         self.assertEqual(7, len(workflow_files))

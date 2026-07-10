@@ -623,14 +623,31 @@ final class TranslationToolsApp: NSObject, NSApplicationDelegate, NSWindowDelega
         return segmented(items)
     }
 
-    private func targetLanguageControl() -> NSStackView {
+    private func targetLanguageControl() -> NSView {
         let stack = NSStackView(views: [targetQuickControl, targetLanguagePopup])
         stack.orientation = .horizontal
         stack.spacing = 10
         stack.alignment = .centerY
-        targetQuickControl.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        stack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        targetQuickControl.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         targetLanguagePopup.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-        return stack
+
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        container.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        container.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor),
+        ])
+        return container
     }
 
     private func selectedTargetLanguage() -> String {

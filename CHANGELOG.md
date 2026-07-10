@@ -17,6 +17,10 @@
 - Made worker discovery relative to the application bundle.
 - Updated public documentation with complete feature, dependency, privacy, and troubleshooting information.
 
+### Fixed
+
+- Centered the combined target-language controls consistently across PDF, document, image, and audio tools.
+
 ### Preserved
 
 - The original Python/Tk implementation remains available under `legacy/tk` for reference and existing users.
