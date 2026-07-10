@@ -1,10 +1,10 @@
-__pycache__/
-*.py[cod]
 .DS_Store
 .venv/
 venv/
-dist/
+__pycache__/
+*.py[cod]
 build/
+dist/
 *.egg-info/
 *.log
 *_CN.*
