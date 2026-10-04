@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.1.0 — 2026-10-04
+
+### Added
+
+- Apple system PDF translation (macOS 15+) and resident local TranslateGemma MLX translation.
+- Cloud fallback across Google, Bing, and DeepL, plus explicit provider choices.
+- Persistent PDF engine and model-folder settings; a saved worker Python interpreter preference.
+- A signed native Apple translation helper, vendored MIT backend attribution, and backend regression tests.
+
+### Fixed
+
+- Avoid loading local models for every paragraph and stop TranslateGemma at end-of-turn.
+- Validate staged PDF outputs, preserve previous outputs, and clean up cancelled subprocess groups.
+- Place the built app beside its workers so bundle-relative discovery also works before installation.
+
+### Requirements
+
+- PDF backends require pdf2zh-next 2.9.0. Local TranslateGemma additionally requires Apple Silicon, mlx-lm, and downloaded model weights. Other tools retain their existing requirements.
+
 ## 2.0.0 — 2026-07-10
 
 ### Added

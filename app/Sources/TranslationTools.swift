@@ -151,6 +151,8 @@ final class TranslationToolsApp: NSObject, NSApplicationDelegate, NSWindowDelega
     private var runButton: NSButton!
     private var progressIndicator: NSProgressIndicator!
 
+    private var pdfModelField: NSTextField!
+    private var pdfBackendHint: NSTextField!
     private var engineControl: SegmentedOptionControl!
     private var targetQuickControl: SegmentedOptionControl!
     private var targetLanguagePopup: NSPopUpButton!
@@ -575,8 +577,26 @@ final class TranslationToolsApp: NSObject, NSApplicationDelegate, NSWindowDelega
     private func addRows(to form: NSGridView) {
         switch tool {
         case .pdf:
-            engineControl = limitedSegmented(engineControl, allowedValues: ["google", "bing"])
+            engineControl = segmented([
+                ("Apple", "apple"), ("TranslateGemma", "gemma"), ("Cloud", "cloud"),
+                ("Google", "google"), ("Bing", "bing"), ("DeepL", "deepl")
+            ])
+            let saved = UserDefaults.standard.string(forKey: "pdfTranslationEngine") ?? "apple"
+            engineControl.selectedIndex = engineControl.items.firstIndex { $0.1 == saved } ?? 0
+            pdfModelField = NSTextField(string: UserDefaults.standard.string(forKey: "pdfTranslationModel") ??
+                ProcessInfo.processInfo.environment["TRANSLATE_TEXT_MODEL"] ?? "")
+            pdfModelField.placeholderString = "Choose a TranslateGemma MLX model folder"
+            pdfModelField.lineBreakMode = .byTruncatingMiddle
+            pdfBackendHint = label("")
+            pdfBackendHint.font = .systemFont(ofSize: 12)
+            pdfBackendHint.textColor = .secondaryLabelColor
+            engineControl.onSelectionChanged = { [weak self] _ in self?.updatePDFBackendControls() }
             form.addRow(with: [label("Engine"), engineControl])
+            form.addRow(with: [label(""), pdfBackendHint])
+            let modelRow = NSStackView(views: [pdfModelField, button(title: "Browse…", target: self, action: #selector(browsePDFModel(_:)), primary: false)])
+            modelRow.spacing = 8
+            form.addRow(with: [label("Local Model"), modelRow])
+            updatePDFBackendControls()
             form.addRow(with: [label("Target"), targetLanguageControl()])
             form.addRow(with: [label("Output"), modeControl])
         case .document:
@@ -1009,10 +1029,41 @@ final class TranslationToolsApp: NSObject, NSApplicationDelegate, NSWindowDelega
         showAlert(title: title, message: message)
     }
 
+    private func updatePDFBackendControls() {
+        let engine = selectedValue(engineControl)
+        UserDefaults.standard.set(engine, forKey: "pdfTranslationEngine")
+        pdfModelField?.isEnabled = engine == "gemma"
+        switch engine {
+        case "apple": pdfBackendHint?.stringValue = "On-device translation. macOS 15+; language download may be required."
+        case "gemma": pdfBackendHint?.stringValue = "Local MLX model stays loaded throughout each PDF."
+        case "cloud": pdfBackendHint?.stringValue = "Online translation with fallback: Google → Bing → DeepL."
+        default: pdfBackendHint?.stringValue = "Online translation with the selected service."
+        }
+    }
+
+    @objc private func browsePDFModel(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            pdfModelField.stringValue = url.path
+            UserDefaults.standard.set(url.path, forKey: "pdfTranslationModel")
+        }
+    }
+
     private func buildCommand(python: String) -> [String] {
         var command = [python, config.workerScript]
         switch tool {
-        case .pdf, .document:
+        case .pdf:
+            let engine = selectedValue(engineControl)
+            command += ["--engine", engine, "--lang-out", selectedTargetLanguage(), "--mode", selectedValue(modeControl)]
+            if engine == "gemma" {
+                let model = pdfModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                UserDefaults.standard.set(model, forKey: "pdfTranslationModel")
+                command += ["--model", model]
+            }
+        case .document:
             command += ["--engine", selectedValue(engineControl)]
             command += ["--lang-out", selectedTargetLanguage()]
             command += ["--mode", selectedValue(modeControl)]
@@ -1070,6 +1121,7 @@ final class TranslationToolsApp: NSObject, NSApplicationDelegate, NSWindowDelega
     private func pythonPath() -> String {
         let candidates = [
             ProcessInfo.processInfo.environment["TRANSLATION_TOOLS_PYTHON"],
+            UserDefaults.standard.string(forKey: "workerPythonPath"),
             "/opt/homebrew/bin/python3",
             "/usr/local/bin/python3",
             "/usr/bin/python3",

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import platform
+import tempfile
 import plistlib
 import shutil
 import subprocess
@@ -16,11 +18,11 @@ SCRIPTS = ROOT / "scripts"
 BUILD_DIR = ROOT / "build"
 OUTPUTS = ROOT / "dist"
 WORKFLOW_SOURCES = ROOT / "workflows"
-APP_BUNDLE = OUTPUTS / "Service Tools.app"
+APP_BUNDLE = OUTPUTS / "Service Tools" / "Service Tools.app"
 WORKERS_OUTPUT = OUTPUTS / "Service Tools" / "Workers"
 EXECUTABLE_NAME = "TranslationTools"
-VERSION = "2.0.0"
-BUILD_NUMBER = "2"
+VERSION = "2.1.0"
+BUILD_NUMBER = "3"
 RELEASE_INSTALLER = ROOT / "install_release.py"
 
 SERVICES_DIR = Path.home() / "Library" / "Services"
@@ -188,6 +190,7 @@ def build_app() -> None:
         [
             "swiftc",
             "-O",
+            "-target", f"{platform.machine()}-apple-macos13.0",
             "-module-cache-path",
             str(BUILD_DIR / "module-cache"),
             "-framework",
@@ -226,6 +229,43 @@ def build_app() -> None:
         plistlib.dump(info, file, sort_keys=False)
 
 
+def sign_app(bundle: Path) -> None:
+    # Sign outside File Provider folders, which can re-add Finder metadata while
+    # codesign is running. ZIP archives carry the signed bytes, not those attrs.
+    with tempfile.TemporaryDirectory(prefix="service-tools-sign-") as directory:
+        staged = Path(directory) / bundle.name
+        shutil.copytree(bundle, staged)
+        subprocess.run(["xattr", "-cr", str(staged)], check=True)
+        subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(staged)], check=True)
+        subprocess.run(["codesign", "--verify", "--deep", "--strict", str(staged)], check=True)
+        shutil.copytree(staged, bundle, dirs_exist_ok=True)
+
+
+def build_apple_helper() -> None:
+    bundle = APP_BUNDLE / "Contents" / "Helpers" / "Apple PDF Translator.app"
+    macos = bundle / "Contents" / "MacOS"
+    macos.mkdir(parents=True)
+    subprocess.run([
+        "swiftc", "-O", "-target", f"{platform.machine()}-apple-macos15.0", "-module-cache-path", str(BUILD_DIR / "module-cache"),
+        "-framework", "AppKit", "-framework", "SwiftUI", "-framework", "Translation",
+        str(APP_ROOT / "Sources" / "ApplePDFTranslator.swift"),
+        "-o", str(macos / "ApplePDFTranslator"),
+    ], check=True)
+    info = {
+        "CFBundleExecutable": "ApplePDFTranslator",
+        "CFBundleIdentifier": "io.github.translate-document-quick-action.service-tools.apple-pdf-translator",
+        "CFBundleName": "Apple PDF Translator",
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": VERSION, "CFBundleVersion": BUILD_NUMBER,
+        "LSMinimumSystemVersion": "15.0", "LSUIElement": True,
+        "NSPrincipalClass": "NSApplication",
+    }
+    with (bundle / "Contents" / "Info.plist").open("wb") as file:
+        plistlib.dump(info, file)
+    subprocess.run(["xattr", "-cr", str(APP_BUNDLE)], check=True)
+    sign_app(APP_BUNDLE)
+
+
 def build_workflows() -> None:
     for workflow in WORKFLOWS:
         bundle = OUTPUTS / f"{workflow['bundle']}.workflow"
@@ -253,11 +293,12 @@ def build_workflows() -> None:
 
 def build() -> None:
     build_app()
+    build_apple_helper()
     if WORKERS_OUTPUT.exists():
         shutil.rmtree(WORKERS_OUTPUT)
     WORKERS_OUTPUT.mkdir(parents=True)
-    for script in SCRIPTS.glob("*.py"):
-        shutil.copy2(script, WORKERS_OUTPUT / script.name)
+    shutil.copytree(SCRIPTS, WORKERS_OUTPUT, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     build_workflows()
 
 
@@ -268,12 +309,12 @@ def replace_tree(source: Path, destination: Path) -> None:
 
 
 def install() -> None:
-    SERVICE_TOOLS_DIR.mkdir(parents=True, exist_ok=True)
-    replace_tree(APP_BUNDLE, SERVICE_TOOLS_DIR / APP_BUNDLE.name)
-    replace_tree(WORKERS_OUTPUT, SERVICE_TOOLS_DIR / "Workers")
-    for workflow in WORKFLOWS:
-        name = f"{workflow['bundle']}.workflow"
-        replace_tree(OUTPUTS / name, SERVICES_DIR / name)
+    from install_release import install_support
+    backup = install_support(APP_BUNDLE, WORKERS_OUTPUT,
+                             [OUTPUTS / f"{workflow['bundle']}.workflow" for workflow in WORKFLOWS],
+                             SERVICES_DIR)
+    if backup:
+        print(f"Previous installation backed up in {backup}")
 
 
 def export_workflows() -> None:
@@ -297,8 +338,7 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def package_release() -> tuple[Path, Path]:
-    release_root = OUTPUTS / "releases"
+def _package_release(release_root: Path) -> tuple[Path, Path]:
     package_name = f"Translate-Document-Quick-Action-v{VERSION}"
     package_dir = release_root / package_name
     if package_dir.exists():
@@ -328,7 +368,8 @@ def package_release() -> tuple[Path, Path]:
 
     packaged_app = support_dir / APP_BUNDLE.name
     if shutil.which("codesign"):
-        subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(packaged_app)], check=True)
+        sign_app(packaged_app)
+        subprocess.run(["xattr", "-cr", str(packaged_app)], check=True)
         subprocess.run(["codesign", "--verify", "--deep", "--strict", str(packaged_app)], check=True)
 
     archive_base = release_root / package_name
@@ -338,6 +379,17 @@ def package_release() -> tuple[Path, Path]:
     checksum_path = release_root / "SHA256SUMS.txt"
     checksum_path.write_text(f"{sha256(archive_path)}  {archive_path.name}\n", encoding="utf-8")
     return archive_path, checksum_path
+
+
+def package_release() -> tuple[Path, Path]:
+    release_root = OUTPUTS / "releases"
+    release_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="service-tools-package-") as directory:
+        archive, checksum = _package_release(Path(directory))
+        paths = (release_root / archive.name, release_root / checksum.name)
+        shutil.copyfile(archive, paths[0])
+        shutil.copyfile(checksum, paths[1])
+    return paths
 
 
 def parse_args() -> argparse.Namespace:

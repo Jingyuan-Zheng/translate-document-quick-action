@@ -20,7 +20,7 @@ The shared Service Tools app presents only the options relevant to the selected 
 
 | Finder Quick Action | Input | Main capabilities | Output |
 | --- | --- | --- | --- |
-| **Translate PDF...** | PDF | Google or Bing translation through `pdf2zh-next`; monolingual, bilingual, or both | Translated PDF files |
+| **Translate PDF...** | PDF | Apple system translation, local TranslateGemma, or Google/Bing/DeepL with cloud fallback; monolingual, bilingual, or both | Translated PDF files |
 | **Translate Document...** | TXT, Markdown, DOCX | Google, Bing, or local Ollama; structure-aware translation | Translated or bilingual documents |
 | **Translate Image...** | PNG, JPEG, WebP, BMP, TIFF | Apple Vision OCR or `manga-image-translator`; multiple text backends | Translated image or side-by-side comparison |
 | **Transcribe Audio...** | Common audio and video formats | MacWhisper transcription with optional translation | Transcript and translated TXT files |
@@ -32,9 +32,9 @@ The current version uses a shared native Swift/AppKit application instead of ope
 
 ## Install
 
-### Download the v2.0.0 release
+### Download the v2.1.0 release
 
-Download `Translate-Document-Quick-Action-v2.0.0.zip` and `SHA256SUMS.txt` from the [latest GitHub Release](https://github.com/Jingyuan-Zheng/translate-document-quick-action/releases/latest), verify the checksum if desired, extract the archive, and run:
+Download `Translate-Document-Quick-Action-v2.1.0.zip` and `SHA256SUMS.txt` from the [latest GitHub Release](https://github.com/Jingyuan-Zheng/translate-document-quick-action/releases/latest), verify the checksum if desired, extract the archive, and run:
 
 ```bash
 python3 install.py
@@ -93,7 +93,12 @@ In Finder, select one or more supported files, right-click, and choose the requi
 ### Translate PDF
 
 - Translates PDFs with `pdf2zh-next` and BabelDOC.
-- Supports Google and Bing translation engines.
+- **Apple** (default): native on-device translation on macOS 15+, with system language downloads when necessary.
+- **TranslateGemma**: a resident local MLX model on Apple Silicon. Choose its model folder with **Browse…**.
+- **Cloud**: tries Google mobile/web-RPC/GTX, then Bing EPT/web, then DeepL community JSON-RPC.
+- **Google**, **Bing**, and **DeepL**: use only the selected service; Google and Bing can try their same-provider alternate paths.
+- Keeps the backend resident for each PDF instead of loading a model for each paragraph.
+- Stages and validates all requested outputs before saving, and uses exclusive filenames to preserve existing files during concurrent runs.
 - Produces a translated-only PDF, a bilingual PDF, or both.
 - Detects a source-language code for output naming when possible.
 - Saves every result beside its source PDF without overwriting an existing file.
@@ -208,13 +213,25 @@ photo_optimized_webp_2.webp
 - Python 3.10 or later.
 - Packages listed in `requirements.txt`: Requests, lxml, PyMuPDF, and Pillow.
 
+For Finder, you can persist the interpreter choice without relying on shell environment inheritance:
+
+```bash
+defaults write io.github.translate-document-quick-action.service-tools \
+  workerPythonPath "$(command -v python3)"
+```
+
+`TRANSLATION_TOOLS_PYTHON` overrides this preference when present.
+
 ### Tool-specific requirements
 
 Install only the components needed for the tools you plan to use:
 
 ```bash
-# PDF translation
-uv tool install --python python3.13 "pdf2zh-next==2.6.4" --with "BabelDOC==0.5.16"
+# PDF translation (the new CLI bridge requires pdf2zh-next 2.9.0)
+uv tool install --python 3.12 "pdf2zh-next==2.9.0"
+
+# Optional local PDF translation, in the Python interpreter used by the app
+python3 -m pip install mlx-lm
 
 # Resize, compress, and convert images
 brew install imagemagick
@@ -302,7 +319,8 @@ Run any worker with `--help` for its complete option list.
 
 ## Translation and Privacy Notes
 
-- Google and Bing modes use public web endpoints, not paid official APIs. These endpoints may be rate-limited or changed upstream.
+- Google, Bing, and DeepL PDF cloud modes use unofficial web endpoints, not paid official APIs. Cloud mode sends text to the next service if a path fails; explicit service selections stay within that provider. These endpoints may be rate-limited or changed upstream.
+- Apple PDF translation and local TranslateGemma process document text on-device. Apple may need to download language models first. TranslateGemma model weights are not included; select your own MLX model folder.
 - Files or extracted text processed through an online translation service leave the local machine.
 - Use Ollama for local text translation when document sensitivity requires local processing.
 - Apple Vision OCR runs locally; the later translation step follows the selected Google, Bing, or Ollama text backend.
@@ -364,3 +382,11 @@ git diff --check
 ## License
 
 MIT. This repository does not vendor `pdf2zh-next`, BabelDOC, OCRmyPDF, Tesseract, ImageMagick, MacWhisper, or `manga-image-translator`.
+
+The vendored translation backend is adapted from the MIT-licensed [Mac Lite Translator](https://github.com/Jingyuan-Zheng/Mac-Lite-Translator_TranslateGemma). See [third-party notices](THIRD-PARTY-NOTICES.md).
+
+Installer updates back up the owned app, workers, and workflow bundles under
+`~/Library/Services/Service Tools Backups/`. Companion apps and user-added workers
+are preserved. The release contains a native Apple Silicon binary; build from
+source on an Intel Mac for a matching binary. Local MLX translation requires
+Apple Silicon.

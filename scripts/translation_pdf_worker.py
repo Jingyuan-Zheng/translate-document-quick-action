@@ -5,6 +5,11 @@ import os
 import re
 import shutil
 import subprocess
+import signal
+import tempfile
+from pathlib import Path
+
+from pdf_translation_bridge import BackendServer, DEFAULT_MODEL
 from typing import Iterable
 
 
@@ -143,14 +148,11 @@ def output_path(input_path: str, suffix: str, ext: str = ".pdf") -> str:
         index += 1
 
 
-def translate_pdf(pdf2zh_bin: str, file_path: str, engine: str, target_language: str, mode: str) -> list[str]:
-    output_dir = os.path.dirname(file_path) or "."
+def _translate_pdf(pdf2zh_bin: str, file_path: str, engine: str, target_language: str, mode: str, cli_command: str, output_dir: str) -> list[str]:
     base_name = os.path.splitext(os.path.basename(file_path))[0]
 
     source_code = detect_source_lang_code(extract_pdf_text(file_path))
     target_code = output_lang_code(target_language)
-    dual_output = output_path(file_path, f"_{source_code}_{target_code}", ".pdf")
-    mono_output = output_path(file_path, f"_{target_code}", ".pdf")
 
     cmd = [
         pdf2zh_bin,
@@ -163,13 +165,16 @@ def translate_pdf(pdf2zh_bin: str, file_path: str, engine: str, target_language:
         "--output",
         output_dir,
     ]
-    if engine == "google":
-        cmd.append("--google")
-    elif engine == "bing":
-        cmd.append("--bing")
+    cmd += ["--clitranslator", "--clitranslator-command", cli_command,
+            "--clitranslator-timeout", "300", "--qps", "1" if engine in {"cloud", "google", "bing", "deepl"} else "20", "--pool-max-workers", "1",
+            "--lang-in", {"CN": "zh", "TW": "zh-Hant", "AUTO": "en"}.get(source_code, source_code.lower())]
+    if mode == "mono":
+        cmd.append("--no-dual")
+    elif mode == "dual":
+        cmd.append("--no-mono")
 
     print(f"\nTranslating PDF: {file_path}", flush=True)
-    print("Running command:", " ".join(cmd), flush=True)
+    print(f"Running PDF translation with {engine} → {target_language} ({mode}).", flush=True)
 
     process = subprocess.Popen(
         cmd,
@@ -178,50 +183,65 @@ def translate_pdf(pdf2zh_bin: str, file_path: str, engine: str, target_language:
         text=True,
         encoding="utf-8",
         errors="replace",
+        start_new_session=True,
     )
     assert process.stdout is not None
     full_output: list[str] = []
-    for line in process.stdout:
-        full_output.append(line)
-        print(line.rstrip(), flush=True)
-    return_code = process.wait()
+    try:
+        for line in process.stdout:
+            full_output.append(line)
+            print(line.rstrip(), flush=True)
+        return_code = process.wait()
+    finally:
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
     if return_code != 0:
         raise RuntimeError(f"pdf2zh exited with code {return_code}")
 
+    selected: list[tuple[str, str]] = []
+    for kind, suffix in [("dual", f"_{source_code}_{target_code}"), ("mono", f"_{target_code}")]:
+        if mode not in {kind, "both"}:
+            continue
+        candidates = [
+            os.path.join(output_dir, f"{base_name}.no_watermark.{target_language}.{kind}.pdf"),
+            os.path.join(output_dir, f"{base_name}.{kind}.pdf"),
+        ]
+        found = next((path for path in candidates if os.path.isfile(path)), None)
+        if found:
+            selected.append((found, suffix))
+    expected_count = 2 if mode == "both" else 1
+    if len(selected) != expected_count:
+        raise RuntimeError(f"Expected {expected_count} output files, found {len(selected)} for {file_path}")
+
     generated_files: list[str] = []
-    possible_dual_files = [
-        os.path.join(output_dir, f"{base_name}.no_watermark.{target_language}.dual.pdf"),
-        os.path.join(output_dir, f"{base_name}.dual.pdf"),
-        dual_output,
-    ]
-    possible_mono_files = [
-        os.path.join(output_dir, f"{base_name}.no_watermark.{target_language}.mono.pdf"),
-        os.path.join(output_dir, f"{base_name}.mono.pdf"),
-        mono_output,
-    ]
-
-    if mode in {"dual", "both"}:
-        for path in possible_dual_files:
-            if os.path.exists(path):
-                if path != dual_output:
-                    os.rename(path, dual_output)
-                    print(f"Renamed {os.path.basename(path)} to {os.path.basename(dual_output)}", flush=True)
-                generated_files.append(dual_output)
+    for source_path, suffix in selected:
+        # Reserve the final name atomically, including when two workflows run.
+        while True:
+            destination = output_path(file_path, suffix)
+            try:
+                output_file = open(destination, "xb")
                 break
-
-    if mode in {"mono", "both"}:
-        for path in possible_mono_files:
-            if os.path.exists(path):
-                if path != mono_output:
-                    os.rename(path, mono_output)
-                    print(f"Renamed {os.path.basename(path)} to {os.path.basename(mono_output)}", flush=True)
-                generated_files.append(mono_output)
-                break
-
-    if not generated_files:
-        print("Command output:", flush=True)
-        print("".join(full_output), flush=True)
-        raise RuntimeError(f"No output files generated for {file_path}")
+            except FileExistsError:
+                continue
+        try:
+            with output_file, open(source_path, "rb") as input_file:
+                shutil.copyfileobj(input_file, output_file)
+            shutil.copystat(source_path, destination)
+        except BaseException:
+            os.unlink(destination)
+            raise
+        generated_files.append(destination)
 
     print(f"Success: generated {len(generated_files)} file(s):", flush=True)
     for path in generated_files:
@@ -229,11 +249,27 @@ def translate_pdf(pdf2zh_bin: str, file_path: str, engine: str, target_language:
     return generated_files
 
 
+def translate_pdf(pdf2zh_bin: str, file_path: str, engine: str, target_language: str, mode: str, model: str = DEFAULT_MODEL) -> list[str]:
+    source = detect_source_lang_code(extract_pdf_text(file_path))
+    source = {"CN": "zh", "TW": "zh-Hant", "AUTO": "en"}.get(source, source.lower())
+    target = {"zh-cn": "zh", "zh-hans": "zh", "zh-tw": "zh-Hant"}.get(target_language.lower(), target_language)
+    # A new output directory prevents old PDFs from being mistaken for success.
+    with tempfile.TemporaryDirectory(prefix="pdf-translation-") as directory:
+        with BackendServer(engine, source, target, model) as server:
+            return _translate_pdf(pdf2zh_bin, file_path, engine, target_language, mode, server.command(), directory)
+
+
+def _terminate(signum, _frame):
+    raise SystemExit(128 + signum)
+
+
 def main(argv: Iterable[str] | None = None) -> int:
+    signal.signal(signal.SIGTERM, _terminate)
     parser = argparse.ArgumentParser(description="Translate PDFs with pdf2zh-next.")
-    parser.add_argument("--engine", choices=["google", "bing"], default="google")
+    parser.add_argument("--engine", choices=["apple", "gemma", "cloud", "google", "bing", "deepl"], default="apple")
     parser.add_argument("--lang-out", default="zh")
     parser.add_argument("--mode", choices=["dual", "mono", "both"], default="both")
+    parser.add_argument("--model", default=os.environ.get("TRANSLATE_TEXT_MODEL", DEFAULT_MODEL))
     parser.add_argument("files", nargs="+")
     args = parser.parse_args(argv)
 
@@ -250,7 +286,7 @@ def main(argv: Iterable[str] | None = None) -> int:
             failed.append(file_path)
             continue
         try:
-            generated = translate_pdf(pdf2zh_bin, file_path, args.engine, args.lang_out, args.mode)
+            generated = translate_pdf(pdf2zh_bin, file_path, args.engine, args.lang_out, args.mode, args.model)
             succeeded.append((file_path, generated))
         except Exception as exc:
             failed.append(file_path)

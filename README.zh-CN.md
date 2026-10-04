@@ -20,7 +20,7 @@
 
 | Finder 快速操作 | 输入 | 主要功能 | 输出 |
 | --- | --- | --- | --- |
-| **Translate PDF...** | PDF | 通过 `pdf2zh-next` 使用 Google 或 Bing；支持单语、双语或同时输出 | 翻译后的 PDF |
+| **Translate PDF...** | PDF | Apple 系统翻译、本地 TranslateGemma、Google/Bing/DeepL 云端回退；支持单语、双语或同时输出 | 翻译后的 PDF |
 | **Translate Document...** | TXT、Markdown、DOCX | Google、Bing 或本地 Ollama；尽量保留文档结构 | 翻译或双语文档 |
 | **Translate Image...** | PNG、JPEG、WebP、BMP、TIFF | Apple Vision OCR 或 `manga-image-translator`；支持多种文本翻译后端 | 翻译图片或左右对照图 |
 | **Transcribe Audio...** | 常见音频和视频格式 | MacWhisper 转录，并可继续翻译 | 转录及翻译后的 TXT |
@@ -32,9 +32,9 @@
 
 ## 安装
 
-### 下载 v2.0.0 Release
+### 下载 v2.1.0 Release
 
-从 [最新 GitHub Release](https://github.com/Jingyuan-Zheng/translate-document-quick-action/releases/latest) 下载 `Translate-Document-Quick-Action-v2.0.0.zip` 和 `SHA256SUMS.txt`。如有需要，先核对 SHA-256；解压后在该目录运行：
+从 [最新 GitHub Release](https://github.com/Jingyuan-Zheng/translate-document-quick-action/releases/latest) 下载 `Translate-Document-Quick-Action-v2.1.0.zip` 和 `SHA256SUMS.txt`。如有需要，先核对 SHA-256；解压后在该目录运行：
 
 ```bash
 python3 install.py
@@ -93,7 +93,12 @@ App 和 Workers 位于：
 ### 翻译 PDF
 
 - 使用 `pdf2zh-next` 和 BabelDOC 翻译 PDF。
-- 支持 Google 和 Bing 翻译引擎。
+- **Apple**（默认）：macOS 15+ 原生本地翻译，首次可能请求下载语言包。
+- **TranslateGemma**：Apple Silicon 上的本地 MLX 模型，通过 **Browse…** 选择模型目录。
+- **Cloud**：按 Google 移动网页/RPC/GTX → Bing EPT/网页 → DeepL 社区 JSON-RPC 的顺序回退。
+- **Google / Bing / DeepL**：限定使用所选服务；Google 和 Bing 可尝试同一服务的备用路径。
+- 每份 PDF 保持后端常驻，不为每个段落重新加载模型。
+- 在临时目录校验所有要求的输出后再保存，使用独占文件名防止并发任务覆盖已有结果。
 - 可以生成纯译文 PDF、双语 PDF，或两者同时生成。
 - 尽可能检测源语言代码，用于输出文件命名。
 - 所有结果保存在原 PDF 旁边，不覆盖已有文件。
@@ -213,8 +218,8 @@ photo_optimized_webp_2.webp
 只需安装实际使用功能所需的部分：
 
 ```bash
-# PDF 翻译
-uv tool install --python python3.13 "pdf2zh-next==2.6.4" --with "BabelDOC==0.5.16"
+# PDF 翻译（新 CLI 桥接需要 pdf2zh-next 2.9.0）
+uv tool install --python 3.12 "pdf2zh-next==2.9.0"
 
 # 图片缩放、压缩和转换
 brew install imagemagick
@@ -302,7 +307,8 @@ python3 scripts/ocr_worker.py scan.png document.pdf
 
 ## 翻译与隐私说明
 
-- Google 和 Bing 模式使用公开网页端点，而不是付费官方 API，可能会受到限流或上游变化影响。
+- PDF 的 Google、Bing、DeepL 云端模式使用非官方网页端点，可能受到限流或上游变化影响。Cloud 模式会在失败后将文本发送到下一服务；单独选择某服务时限定使用该服务。
+- Apple PDF 翻译和本地 TranslateGemma 在设备上处理文本；Apple 首次可能需下载语言包。TranslateGemma 模型权重不随程序分发，需自行选择 MLX 模型目录。
 - 通过在线翻译服务处理的文件或提取文本会离开本机。
 - 敏感文档需要本地处理时，请使用 Ollama。
 - Apple Vision OCR 在本地运行；后续翻译是否联网取决于选择的 Google、Bing 或 Ollama 后端。
@@ -365,3 +371,19 @@ git diff --check
 ## 许可证
 
 MIT。本仓库不打包 `pdf2zh-next`、BabelDOC、OCRmyPDF、Tesseract、ImageMagick、MacWhisper 或 `manga-image-translator`。
+
+可以持久化设置 Finder 使用的 Python，不依赖交互式终端环境：
+
+```bash
+defaults write io.github.translate-document-quick-action.service-tools \
+  workerPythonPath "$(command -v python3)"
+```
+
+设置 `TRANSLATION_TOOLS_PYTHON` 时，该环境变量优先。
+
+翻译后端改编自 MIT 授权的 [Mac Lite Translator](https://github.com/Jingyuan-Zheng/Mac-Lite-Translator_TranslateGemma)，详见[第三方声明](THIRD-PARTY-NOTICES.md)。
+
+安装器更新前会将应用、workers 和相关 workflow 备份到
+`~/Library/Services/Service Tools Backups/`，并保留其他辅助应用及用户新增的 worker。
+本次下载包包含 Apple Silicon 原生程序；Intel Mac 请从源码构建对应架构。
+本地 MLX 翻译需要 Apple Silicon。
